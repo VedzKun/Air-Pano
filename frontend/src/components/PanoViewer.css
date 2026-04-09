@@ -1,5 +1,5 @@
 /* ==========================================================================
-   PanoViewer — 360° renderer canvas container
+   PanoViewer v2 — 360° renderer canvas container
    ========================================================================== */
 
 .pano-viewer {
@@ -15,7 +15,15 @@
   cursor: grabbing;
 }
 
-/* Smooth fade overlay for scene transitions */
+.pano-viewer--inspect {
+  cursor: crosshair;
+}
+
+.pano-viewer--inspect:active {
+  cursor: crosshair;
+}
+
+/* Smooth crossfade overlay for scene transitions */
 .pano-transition {
   position: absolute;
   inset: 0;
@@ -30,7 +38,7 @@
   opacity: 1;
 }
 
-/* Thin loading bar at top during texture load */
+/* Loading bar */
 .pano-loading {
   position: absolute;
   top: 0;

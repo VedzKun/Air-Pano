@@ -1,19 +1,19 @@
 /**
- * PanoViewer — Core 360° Panoramic Renderer
- * ============================================
- * This is the heart of the application.  It creates a Three.js scene with:
- *   1. A large SphereGeometry with inward-facing normals (the "sky-sphere")
- *   2. The panoramic image mapped as a texture onto that sphere
- *   3. A PerspectiveCamera at the centre, controlled by mouse/touch drag
- *   4. Zoom via scroll-wheel (adjusts camera FOV)
+ * PanoViewer v2 — Enhanced 360° Panoramic Renderer
+ * ==================================================
+ * Upgraded from v1 with:
+ *   1. Texture cache integration (LRU cache + preloading)
+ *   2. Two-sphere crossfade transitions (no flicker)
+ *   3. Gyroscope support (device orientation overrides drag)
+ *   4. Raycaster for 3D hotspot click/hover detection
+ *   5. Inspection mode highlight zones
+ *   6. Performance optimizations (minimal re-renders, proper disposal)
  *
- * IMPORTANT RENDERING CONCEPTS:
- *   - The sphere is scaled by (-1, 1, 1) so its normals point inward,
- *     making the texture visible from inside.
- *   - Camera rotation uses lon/lat angles converted to a lookAt target
- *     via spherical coordinate maths.
- *   - Vertical rotation is clamped to ±85° to prevent gimbal-lock flipping.
- *   - Old textures are disposed on scene change to prevent GPU memory leaks.
+ * RENDERING ARCHITECTURE:
+ *   - Primary sphere: shows current scene texture
+ *   - Transition sphere: old scene fades out during crossfade
+ *   - Hotspot sprites: positioned at pitch/yaw on the sphere
+ *   - Camera: PerspectiveCamera at origin, controlled by lon/lat
  */
 
 import React, {
@@ -24,7 +24,8 @@ import React, {
   useMemo,
 } from 'react';
 import * as THREE from 'three';
-import Hotspot from './Hotspot';
+import useTextureCache from '../hooks/useTextureCache';
+import InspectionOverlay from './InspectionOverlay';
 import './PanoViewer.css';
 
 // ---------------------------------------------------------------------------
@@ -33,54 +34,138 @@ import './PanoViewer.css';
 const SPHERE_RADIUS   = 500;
 const SPHERE_W_SEGS   = 60;
 const SPHERE_H_SEGS   = 40;
+const HOTSPOT_RADIUS  = 480;
 const FOV_DEFAULT     = 75;
 const FOV_MIN         = 30;
 const FOV_MAX         = 90;
-const LAT_CLAMP       = 85;   // degrees — prevents vertical flip
-const DRAG_SPEED      = 0.15; // sensitivity multiplier for mouse/touch drag
-const INERTIA_DAMPING = 0.95; // how quickly inertia decays (lower = faster stop)
-const INERTIA_CUTOFF  = 0.01; // velocity below which we stop inertia
+const LAT_CLAMP       = 85;
+const DRAG_SPEED      = 0.15;
+const INERTIA_DAMPING = 0.95;
+const INERTIA_CUTOFF  = 0.01;
+const CROSSFADE_MS    = 600;
 
-export default function PanoViewer({ scene: currentScene, onNavigate }) {
-  // Refs for Three.js objects (never trigger re-renders)
-  const mountRef    = useRef(null);
-  const rendererRef = useRef(null);
-  const cameraRef   = useRef(null);
-  const sceneRef    = useRef(null);
-  const meshRef     = useRef(null);
-  const textureRef  = useRef(null);
-  const rafRef      = useRef(null);
+/**
+ * Convert pitch/yaw degrees to a 3D position on the panoramic sphere.
+ */
+function pitchYawToVector3(pitch, yaw, radius = HOTSPOT_RADIUS) {
+  const phi   = THREE.MathUtils.degToRad(90 - pitch);
+  const theta = THREE.MathUtils.degToRad(yaw);
+  return new THREE.Vector3(
+    radius * Math.sin(phi) * Math.cos(theta),
+    radius * Math.cos(phi),
+    radius * Math.sin(phi) * Math.sin(theta)
+  );
+}
 
-  // Camera orientation state (mutable refs for performance — no re-render per frame)
+/**
+ * Create a canvas-texture for a hotspot sprite.
+ * @param {'navigation'|'annotation'} type
+ * @param {boolean} hovered
+ */
+function createHotspotTexture(type = 'navigation', hovered = false) {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  const cx = size / 2;
+  const cy = size / 2;
+
+  // Colors based on type
+  const color = type === 'annotation' ? '#00D4FF' : '#FFB800';
+  const glowColor = type === 'annotation'
+    ? 'rgba(0, 212, 255, 0.3)' : 'rgba(255, 184, 0, 0.3)';
+
+  // Outer glow
+  const grad = ctx.createRadialGradient(cx, cy, 10, cx, cy, 56);
+  grad.addColorStop(0, glowColor);
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+
+  // Outer ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, hovered ? 34 : 28, 0, Math.PI * 2);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = hovered ? 4 : 3;
+  ctx.stroke();
+
+  // Center dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, hovered ? 10 : 7, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+
+  // Icon: arrow for navigation, "i" for annotation
+  ctx.fillStyle = type === 'annotation' ? '#0a0e1a' : '#0a0e1a';
+  ctx.font = `bold ${hovered ? 13 : 11}px Inter, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (type === 'annotation') {
+    ctx.fillText('i', cx, cy + 1);
+  } else {
+    ctx.fillText('→', cx, cy);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+export default function PanoViewer({
+  scene: currentScene,
+  onNavigate,
+  onAnnotationOpen,
+  gyroEnabled,
+  gyroOrientation,
+  inspectionMode,
+  onHotspotHover,
+}) {
+  // Refs for Three.js objects
+  const mountRef         = useRef(null);
+  const rendererRef      = useRef(null);
+  const cameraRef        = useRef(null);
+  const sceneRef         = useRef(null);
+  const primaryMeshRef   = useRef(null);
+  const transitionMeshRef = useRef(null);
+  const rafRef           = useRef(null);
+  const hotspotSprites   = useRef([]);
+  const raycasterRef     = useRef(new THREE.Raycaster());
+  const mouseRef         = useRef(new THREE.Vector2(-9999, -9999));
+  const hoveredSprite    = useRef(null);
+  const prevSceneIdRef   = useRef(null);
+
+  // Camera orientation
   const lon         = useRef(0);
   const lat         = useRef(0);
   const isDragging  = useRef(false);
   const prevPointer = useRef({ x: 0, y: 0 });
   const velocity    = useRef({ x: 0, y: 0 });
 
-  // React state — only for values that need to trigger renders
-  const [rendererSize, setRendererSize] = useState(null);
-  const [transitioning, setTransitioning] = useState(false);
+  // React state
+  const [rendererSize, setRendererSize]     = useState(null);
+  const [transitioning, setTransitioning]   = useState(false);
   const [textureLoading, setTextureLoading] = useState(false);
 
+  // Texture cache
+  const { loadTexture, preload, disposeAll } = useTextureCache();
+
   // -----------------------------------------------------------------------
-  // Initialise Three.js (runs once on mount)
+  // Initialise Three.js
   // -----------------------------------------------------------------------
   useEffect(() => {
     const mount = mountRef.current;
 
-    // ---- Renderer ----
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // cap at 2x for performance
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     mount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // ---- Scene ----
     const threeScene = new THREE.Scene();
     sceneRef.current = threeScene;
 
-    // ---- Camera ----
     const camera = new THREE.PerspectiveCamera(
       FOV_DEFAULT,
       mount.clientWidth / mount.clientHeight,
@@ -90,24 +175,17 @@ export default function PanoViewer({ scene: currentScene, onNavigate }) {
     camera.target = new THREE.Vector3(0, 0, 0);
     cameraRef.current = camera;
 
-    // ---- Panoramic Sphere ----
-    const geometry = new THREE.SphereGeometry(
-      SPHERE_RADIUS,
-      SPHERE_W_SEGS,
-      SPHERE_H_SEGS
-    );
-    // Flip normals inward so texture is visible from inside
+    // Primary panorama sphere
+    const geometry = new THREE.SphereGeometry(SPHERE_RADIUS, SPHERE_W_SEGS, SPHERE_H_SEGS);
     geometry.scale(-1, 1, 1);
-
-    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true });
     const mesh = new THREE.Mesh(geometry, material);
     threeScene.add(mesh);
-    meshRef.current = mesh;
+    primaryMeshRef.current = mesh;
 
-    // Set initial size state for hotspot projection
     setRendererSize({ width: mount.clientWidth, height: mount.clientHeight });
 
-    // ---- Resize handler ----
+    // Resize handler
     function onResize() {
       const w = mount.clientWidth;
       const h = mount.clientHeight;
@@ -118,12 +196,12 @@ export default function PanoViewer({ scene: currentScene, onNavigate }) {
     }
     window.addEventListener('resize', onResize);
 
-    // ---- Animation loop ----
+    // Animation loop
     function animate() {
       rafRef.current = requestAnimationFrame(animate);
 
-      // Apply inertia when not dragging
-      if (!isDragging.current) {
+      // Apply inertia when not dragging and gyro not active
+      if (!isDragging.current && !gyroEnabled) {
         const vx = velocity.current.x;
         const vy = velocity.current.y;
         if (Math.abs(vx) > INERTIA_CUTOFF || Math.abs(vy) > INERTIA_CUTOFF) {
@@ -135,7 +213,7 @@ export default function PanoViewer({ scene: currentScene, onNavigate }) {
         }
       }
 
-      // Convert lon/lat to camera lookAt target using spherical coords
+      // Spherical to Cartesian for camera lookAt
       const phi   = THREE.MathUtils.degToRad(90 - lat.current);
       const theta = THREE.MathUtils.degToRad(lon.current);
 
@@ -144,17 +222,55 @@ export default function PanoViewer({ scene: currentScene, onNavigate }) {
       camera.target.z = SPHERE_RADIUS * Math.sin(phi) * Math.sin(theta);
 
       camera.lookAt(camera.target);
+
+      // Raycaster hover detection for hotspot sprites
+      raycasterRef.current.setFromCamera(mouseRef.current, camera);
+      const intersects = raycasterRef.current.intersectObjects(hotspotSprites.current);
+
+      if (intersects.length > 0) {
+        const hit = intersects[0].object;
+        if (hoveredSprite.current !== hit) {
+          // Un-hover previous
+          if (hoveredSprite.current) {
+            hoveredSprite.current.scale.set(1, 1, 1);
+            const prevData = hoveredSprite.current.userData;
+            hoveredSprite.current.material.map?.dispose();
+            hoveredSprite.current.material.map = createHotspotTexture(prevData.type, false);
+            hoveredSprite.current.material.needsUpdate = true;
+          }
+          // Hover new
+          hoveredSprite.current = hit;
+          hit.scale.set(1.3, 1.3, 1.3);
+          hit.material.map?.dispose();
+          hit.material.map = createHotspotTexture(hit.userData.type, true);
+          hit.material.needsUpdate = true;
+          mount.style.cursor = 'pointer';
+          onHotspotHover?.(hit.userData);
+        }
+      } else {
+        if (hoveredSprite.current) {
+          hoveredSprite.current.scale.set(1, 1, 1);
+          const prevData = hoveredSprite.current.userData;
+          hoveredSprite.current.material.map?.dispose();
+          hoveredSprite.current.material.map = createHotspotTexture(prevData.type, false);
+          hoveredSprite.current.material.needsUpdate = true;
+          hoveredSprite.current = null;
+          mount.style.cursor = 'grab';
+          onHotspotHover?.(null);
+        }
+      }
+
       renderer.render(threeScene, camera);
     }
     animate();
 
-    // ---- Cleanup ----
     return () => {
       window.removeEventListener('resize', onResize);
       cancelAnimationFrame(rafRef.current);
       renderer.dispose();
       geometry.dispose();
       material.dispose();
+      disposeAll();
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);
       }
@@ -162,58 +278,159 @@ export default function PanoViewer({ scene: currentScene, onNavigate }) {
   }, []); // mount once
 
   // -----------------------------------------------------------------------
-  // Load / swap panoramic texture when the scene changes
+  // Gyroscope override
   // -----------------------------------------------------------------------
   useEffect(() => {
-    if (!currentScene || !meshRef.current) return;
+    if (!gyroEnabled || !gyroOrientation) return;
 
-    setTransitioning(true);
+    let rafId;
+    function syncGyro() {
+      lon.current = gyroOrientation.current.lon;
+      lat.current = gyroOrientation.current.lat;
+      rafId = requestAnimationFrame(syncGyro);
+    }
+    rafId = requestAnimationFrame(syncGyro);
+    return () => cancelAnimationFrame(rafId);
+  }, [gyroEnabled, gyroOrientation]);
+
+  // -----------------------------------------------------------------------
+  // Load texture + crossfade + create hotspot sprites on scene change
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (!currentScene || !primaryMeshRef.current || !sceneRef.current) return;
+
+    const threeScene = sceneRef.current;
+    const isFirstLoad = prevSceneIdRef.current === null;
+    prevSceneIdRef.current = currentScene.id;
+
     setTextureLoading(true);
+    if (!isFirstLoad) setTransitioning(true);
 
-    const loader = new THREE.TextureLoader();
+    // Remove old hotspot sprites
+    hotspotSprites.current.forEach((sprite) => {
+      threeScene.remove(sprite);
+      sprite.material.map?.dispose();
+      sprite.material.dispose();
+    });
+    hotspotSprites.current = [];
 
-    loader.load(
-      currentScene.imageUrl,
-      (texture) => {
-        // Dispose previous texture to free GPU memory
-        if (textureRef.current) {
-          textureRef.current.dispose();
+    loadTexture(currentScene.imageUrl)
+      .then((texture) => {
+        // Crossfade: store old material's texture, set new one
+        const mesh = primaryMeshRef.current;
+
+        if (!isFirstLoad) {
+          // Create transition sphere with old texture
+          const oldTexture = mesh.material.map;
+          if (oldTexture) {
+            const transGeo = new THREE.SphereGeometry(SPHERE_RADIUS - 1, SPHERE_W_SEGS, SPHERE_H_SEGS);
+            transGeo.scale(-1, 1, 1);
+            const transMat = new THREE.MeshBasicMaterial({
+              map: oldTexture,
+              transparent: true,
+              opacity: 1,
+            });
+            const transMesh = new THREE.Mesh(transGeo, transMat);
+            threeScene.add(transMesh);
+
+            // Animate fade-out of transition sphere
+            let startTime = performance.now();
+            function fadeTick() {
+              const elapsed = performance.now() - startTime;
+              const progress = Math.min(elapsed / CROSSFADE_MS, 1);
+              transMat.opacity = 1 - progress;
+
+              if (progress < 1) {
+                requestAnimationFrame(fadeTick);
+              } else {
+                threeScene.remove(transMesh);
+                transGeo.dispose();
+                transMat.dispose();
+              }
+            }
+            requestAnimationFrame(fadeTick);
+          }
         }
-        textureRef.current = texture;
 
         // Apply new texture
-        texture.colorSpace = THREE.SRGBColorSpace;
-        meshRef.current.material.map = texture;
-        meshRef.current.material.needsUpdate = true;
+        mesh.material.map = texture;
+        mesh.material.needsUpdate = true;
 
         setTextureLoading(false);
+        setTimeout(() => setTransitioning(false), isFirstLoad ? 100 : CROSSFADE_MS);
 
-        // Brief transition delay for the fade overlay
-        setTimeout(() => setTransitioning(false), 400);
-      },
-      undefined, // onProgress
-      (err) => {
+        // Preload linked scenes
+        if (currentScene.linkedScenes) {
+          const allScenes = window.__airPanoScenes || [];
+          const urls = currentScene.linkedScenes
+            .map((id) => allScenes.find((s) => s.id === id)?.imageUrl)
+            .filter(Boolean);
+          preload(urls);
+        }
+      })
+      .catch((err) => {
         console.error('Failed to load panorama texture:', err);
         setTextureLoading(false);
         setTransitioning(false);
-      }
-    );
+      });
+
+    // Create 3D hotspot sprites
+    if (!inspectionMode && currentScene.hotspots) {
+      currentScene.hotspots.forEach((hs) => {
+        const pos = pitchYawToVector3(hs.pitch, hs.yaw);
+        const texture = createHotspotTexture(hs.type || 'navigation', false);
+        const material = new THREE.SpriteMaterial({
+          map: texture,
+          transparent: true,
+          depthTest: false,
+          sizeAttenuation: true,
+        });
+        const sprite = new THREE.Sprite(material);
+        sprite.position.copy(pos);
+        sprite.scale.set(40, 40, 1);
+        sprite.userData = hs;
+
+        threeScene.add(sprite);
+        hotspotSprites.current.push(sprite);
+      });
+    }
+  }, [currentScene, inspectionMode, loadTexture, preload]);
+
+  // -----------------------------------------------------------------------
+  // Store scenes globally for preloading lookup (lightweight)
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (currentScene) {
+      // App.jsx should set window.__airPanoScenes for preload lookups
+    }
   }, [currentScene]);
 
   // -----------------------------------------------------------------------
-  // Pointer (mouse + touch) handlers for drag-to-rotate
+  // Pointer handlers
   // -----------------------------------------------------------------------
   const handlePointerDown = useCallback((e) => {
+    if (gyroEnabled) return; // disable drag when gyro active
     isDragging.current = true;
     velocity.current = { x: 0, y: 0 };
     const point = e.touches ? e.touches[0] : e;
     prevPointer.current = { x: point.clientX, y: point.clientY };
-  }, []);
+  }, [gyroEnabled]);
 
   const handlePointerMove = useCallback((e) => {
-    if (!isDragging.current) return;
-    e.preventDefault(); // prevent scroll on mobile
+    const mount = mountRef.current;
     const point = e.touches ? e.touches[0] : e;
+
+    // Update mouse for raycaster
+    if (mount) {
+      const rect = mount.getBoundingClientRect();
+      mouseRef.current.x = ((point.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((point.clientY - rect.top) / rect.height) * 2 + 1;
+    }
+
+    if (!isDragging.current) return;
+    if (gyroEnabled) return;
+    e.preventDefault();
+
     const dx = (point.clientX - prevPointer.current.x) * DRAG_SPEED;
     const dy = (point.clientY - prevPointer.current.y) * DRAG_SPEED;
 
@@ -223,14 +440,41 @@ export default function PanoViewer({ scene: currentScene, onNavigate }) {
 
     velocity.current = { x: -dx, y: -dy };
     prevPointer.current = { x: point.clientX, y: point.clientY };
-  }, []);
+  }, [gyroEnabled]);
 
   const handlePointerUp = useCallback(() => {
     isDragging.current = false;
   }, []);
 
   // -----------------------------------------------------------------------
-  // Zoom via scroll wheel (adjusts FOV)
+  // Click handler for hotspot sprites
+  // -----------------------------------------------------------------------
+  const handleClick = useCallback((e) => {
+    if (!cameraRef.current) return;
+
+    const mount = mountRef.current;
+    const rect = mount.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, cameraRef.current);
+    const intersects = raycaster.intersectObjects(hotspotSprites.current);
+
+    if (intersects.length > 0) {
+      const hs = intersects[0].object.userData;
+      if (hs.type === 'annotation' && hs.annotation) {
+        onAnnotationOpen?.(hs.annotation);
+      } else if (hs.targetSceneId) {
+        onNavigate?.(hs.targetSceneId);
+      }
+    }
+  }, [onNavigate, onAnnotationOpen]);
+
+  // -----------------------------------------------------------------------
+  // Zoom via scroll wheel
   // -----------------------------------------------------------------------
   const handleWheel = useCallback((e) => {
     e.preventDefault();
@@ -240,7 +484,6 @@ export default function PanoViewer({ scene: currentScene, onNavigate }) {
     camera.updateProjectionMatrix();
   }, []);
 
-  // Attach wheel listener with { passive: false } to allow preventDefault
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
@@ -253,7 +496,7 @@ export default function PanoViewer({ scene: currentScene, onNavigate }) {
   // -----------------------------------------------------------------------
   return (
     <div
-      className="pano-viewer no-select"
+      className={`pano-viewer no-select ${inspectionMode ? 'pano-viewer--inspect' : ''}`}
       id="pano-viewer"
       ref={mountRef}
       onMouseDown={handlePointerDown}
@@ -263,29 +506,27 @@ export default function PanoViewer({ scene: currentScene, onNavigate }) {
       onTouchStart={handlePointerDown}
       onTouchMove={handlePointerMove}
       onTouchEnd={handlePointerUp}
+      onClick={handleClick}
     >
-      {/* Fade overlay for scene transitions */}
+      {/* Crossfade overlay (quick flash for first load) */}
       <div
         className={`pano-transition ${transitioning ? 'pano-transition--active' : ''}`}
       />
 
-      {/* Texture loading indicator */}
+      {/* Loading bar */}
       {textureLoading && (
         <div className="pano-loading">
           <div className="pano-loading-bar" />
         </div>
       )}
 
-      {/* Hotspot markers */}
-      {currentScene?.hotspots?.map((hs) => (
-        <Hotspot
-          key={hs.id}
-          hotspot={hs}
-          camera={cameraRef.current}
-          rendererSize={rendererSize}
-          onClick={onNavigate}
-        />
-      ))}
+      {/* Inspection mode highlight zones */}
+      <InspectionOverlay
+        zones={currentScene?.inspectionZones}
+        camera={cameraRef.current}
+        rendererSize={rendererSize}
+        active={inspectionMode}
+      />
     </div>
   );
 }

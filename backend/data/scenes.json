@@ -1,17 +1,61 @@
 {
+  "metadata": {
+    "version": "2.0",
+    "title": "Boeing 787 Dreamliner Virtual Tour",
+    "author": "Air-Pano Engineering",
+    "created": "2026-04-09"
+  },
+  "tourSequence": ["cockpit", "first-class", "business-class", "economy", "galley"],
   "scenes": [
     {
       "id": "cockpit",
       "name": "Aircraft Cockpit",
       "description": "The flight deck featuring advanced avionics and instrumentation panels.",
       "imageUrl": "/panoramas/cockpit.png",
+      "thumbnailUrl": "/panoramas/cockpit.png",
+      "audioUrl": "/audio/cockpit.mp3",
+      "order": 0,
+      "linkedScenes": ["first-class"],
+      "inspectionZones": [
+        {
+          "id": "iz-cockpit-1",
+          "pitch": 15,
+          "yaw": 0,
+          "radius": 18,
+          "label": "Primary Flight Display",
+          "description": "Shows altitude, airspeed, heading, and vertical speed.",
+          "color": "#00D4FF"
+        },
+        {
+          "id": "iz-cockpit-2",
+          "pitch": 10,
+          "yaw": 330,
+          "radius": 14,
+          "label": "Engine Instruments",
+          "description": "N1, N2, EGT, and fuel flow gauges for both engines.",
+          "color": "#FFB800"
+        }
+      ],
       "hotspots": [
         {
           "id": "hs-cockpit-1",
+          "type": "navigation",
           "pitch": -10,
           "yaw": 180,
           "targetSceneId": "first-class",
-          "label": "Enter First Class →"
+          "label": "Enter First Class"
+        },
+        {
+          "id": "hs-cockpit-2",
+          "type": "annotation",
+          "pitch": 20,
+          "yaw": 15,
+          "label": "Glass Cockpit",
+          "annotation": {
+            "title": "Glass Cockpit Avionics",
+            "description": "The Boeing 787 features a Honeywell glass cockpit with large-format LCD displays replacing traditional analog instruments. The Primary Flight Display (PFD) integrates attitude, altitude, airspeed, and navigation data into a single intuitive view, reducing pilot workload during all phases of flight.",
+            "imageUrl": "/annotations/glass-cockpit.png"
+          }
         }
       ]
     },
@@ -20,20 +64,49 @@
       "name": "First Class Cabin",
       "description": "Luxurious seating with premium amenities and personal suites.",
       "imageUrl": "/panoramas/first-class.png",
+      "thumbnailUrl": "/panoramas/first-class.png",
+      "audioUrl": "/audio/first-class.mp3",
+      "order": 1,
+      "linkedScenes": ["cockpit", "business-class"],
+      "inspectionZones": [
+        {
+          "id": "iz-fc-1",
+          "pitch": 0,
+          "yaw": 90,
+          "radius": 20,
+          "label": "Personal Suite",
+          "description": "Fully enclosed suite with sliding door, lie-flat bed, and 23-inch entertainment screen.",
+          "color": "#00D4FF"
+        }
+      ],
       "hotspots": [
         {
           "id": "hs-fc-1",
+          "type": "navigation",
           "pitch": -5,
           "yaw": 0,
           "targetSceneId": "cockpit",
-          "label": "← Back to Cockpit"
+          "label": "Back to Cockpit"
         },
         {
           "id": "hs-fc-2",
+          "type": "navigation",
           "pitch": -10,
           "yaw": 180,
           "targetSceneId": "business-class",
-          "label": "To Business Class →"
+          "label": "To Business Class"
+        },
+        {
+          "id": "hs-fc-3",
+          "type": "annotation",
+          "pitch": 5,
+          "yaw": 90,
+          "label": "Suite Amenities",
+          "annotation": {
+            "title": "First Class Suite",
+            "description": "Each suite features a lie-flat bed with premium bedding, personal wardrobe, vanity mirror with adjustable lighting, noise-canceling headphones, and a dining table for two. Passengers enjoy direct aisle access regardless of seat position.",
+            "imageUrl": "/annotations/first-class-suite.png"
+          }
         }
       ]
     },
@@ -42,27 +115,57 @@
       "name": "Business Class Cabin",
       "description": "Spacious lie-flat seats with direct aisle access and ambient lighting.",
       "imageUrl": "/panoramas/business-class.png",
+      "thumbnailUrl": "/panoramas/business-class.png",
+      "audioUrl": "/audio/business-class.mp3",
+      "order": 2,
+      "linkedScenes": ["first-class", "economy", "galley"],
+      "inspectionZones": [
+        {
+          "id": "iz-bc-1",
+          "pitch": 5,
+          "yaw": 270,
+          "radius": 16,
+          "label": "IFE System",
+          "description": "18-inch touchscreen with 1000+ hours of content, Wi-Fi, and USB-C charging.",
+          "color": "#00D4FF"
+        }
+      ],
       "hotspots": [
         {
           "id": "hs-bc-1",
+          "type": "navigation",
           "pitch": -5,
           "yaw": 0,
           "targetSceneId": "first-class",
-          "label": "← Back to First Class"
+          "label": "Back to First Class"
         },
         {
           "id": "hs-bc-2",
+          "type": "navigation",
           "pitch": -10,
           "yaw": 180,
           "targetSceneId": "economy",
-          "label": "To Economy Class →"
+          "label": "To Economy Class"
         },
         {
           "id": "hs-bc-3",
+          "type": "navigation",
           "pitch": -8,
           "yaw": 90,
           "targetSceneId": "galley",
-          "label": "To Galley →"
+          "label": "To Galley"
+        },
+        {
+          "id": "hs-bc-4",
+          "type": "annotation",
+          "pitch": 0,
+          "yaw": 270,
+          "label": "Entertainment",
+          "annotation": {
+            "title": "In-Flight Entertainment",
+            "description": "The Panasonic eX3 system powers 18-inch 1080p screens at every seat. Content includes live TV, movies, music, games, and a moving map. Bluetooth audio pairing and Wi-Fi connectivity are standard.",
+            "imageUrl": "/annotations/ife-system.png"
+          }
         }
       ]
     },
@@ -71,20 +174,49 @@
       "name": "Economy Class Cabin",
       "description": "Standard seating configuration with overhead bins and entertainment screens.",
       "imageUrl": "/panoramas/economy.png",
+      "thumbnailUrl": "/panoramas/economy.png",
+      "audioUrl": "/audio/economy.mp3",
+      "order": 3,
+      "linkedScenes": ["business-class", "galley"],
+      "inspectionZones": [
+        {
+          "id": "iz-ec-1",
+          "pitch": 40,
+          "yaw": 0,
+          "radius": 22,
+          "label": "Overhead Bins",
+          "description": "Redesigned stow bins hold 50% more luggage with easy one-hand operation.",
+          "color": "#FFB800"
+        }
+      ],
       "hotspots": [
         {
           "id": "hs-ec-1",
+          "type": "navigation",
           "pitch": -5,
           "yaw": 0,
           "targetSceneId": "business-class",
-          "label": "← Back to Business Class"
+          "label": "Back to Business Class"
         },
         {
           "id": "hs-ec-2",
+          "type": "navigation",
           "pitch": -10,
           "yaw": 270,
           "targetSceneId": "galley",
-          "label": "To Galley →"
+          "label": "To Galley"
+        },
+        {
+          "id": "hs-ec-3",
+          "type": "annotation",
+          "pitch": 0,
+          "yaw": 135,
+          "label": "Cabin Lighting",
+          "annotation": {
+            "title": "LED Mood Lighting",
+            "description": "The 787's electrochromatic windows and customizable LED lighting system simulates natural daylight cycles, reducing jet lag. Cabin crew can select from 16 million color combinations to create ambiance appropriate for meals, sleep, or arrival.",
+            "imageUrl": "/annotations/led-lighting.png"
+          }
         }
       ]
     },
@@ -93,20 +225,49 @@
       "name": "Galley / Service Area",
       "description": "The onboard kitchen and service preparation area for cabin crew.",
       "imageUrl": "/panoramas/galley.png",
+      "thumbnailUrl": "/panoramas/galley.png",
+      "audioUrl": "/audio/galley.mp3",
+      "order": 4,
+      "linkedScenes": ["business-class", "economy"],
+      "inspectionZones": [
+        {
+          "id": "iz-gl-1",
+          "pitch": 0,
+          "yaw": 90,
+          "radius": 15,
+          "label": "Meal Cart Storage",
+          "description": "Standardized ATLAS containers hold pre-prepared meals for up to 300 passengers.",
+          "color": "#FFB800"
+        }
+      ],
       "hotspots": [
         {
           "id": "hs-gl-1",
+          "type": "navigation",
           "pitch": -5,
           "yaw": 0,
           "targetSceneId": "business-class",
-          "label": "← Back to Business Class"
+          "label": "Back to Business Class"
         },
         {
           "id": "hs-gl-2",
+          "type": "navigation",
           "pitch": -8,
           "yaw": 180,
           "targetSceneId": "economy",
-          "label": "To Economy Class →"
+          "label": "To Economy Class"
+        },
+        {
+          "id": "hs-gl-3",
+          "type": "annotation",
+          "pitch": 5,
+          "yaw": 90,
+          "label": "Galley Equipment",
+          "annotation": {
+            "title": "Aircraft Galley Systems",
+            "description": "Modern aircraft galleys feature convection ovens, steam injection systems, espresso machines, and water boilers. The modular design allows airlines to customize layouts for different service levels and route durations.",
+            "imageUrl": "/annotations/galley-equipment.png"
+          }
         }
       ]
     }

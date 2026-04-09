@@ -1,28 +1,103 @@
 /**
- * App — Root Application Component
- * ==================================
- * Orchestrates the entire virtual tour:
- *   1. Fetches scene data via the useScenes hook
- *   2. Renders the PanoViewer (Three.js canvas)
- *   3. Renders the Overlay HUD (scene info, nav, fullscreen)
- *   4. Shows Loader during initial data fetch
- *   5. Shows error state on API failure
+ * App v2 — Root Application Component
+ * ======================================
+ * Full orchestrator for the virtual tour system.
+ * Manages:
+ *   - Scene state via useScenes hook
+ *   - Analytics tracking via useAnalytics hook
+ *   - Gyroscope integration via useGyroscope hook
+ *   - Audio narration via useAudio hook
+ *   - UI states: annotation panel, guided tour, inspection mode
+ *   - Plugin initialization
  */
 
-import React from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import useScenes from './hooks/useScenes';
+import useAnalytics from './hooks/useAnalytics';
+import useGyroscope from './hooks/useGyroscope';
+import useAudio from './hooks/useAudio';
 import PanoViewer from './components/PanoViewer';
 import Overlay from './components/Overlay';
+import AnnotationPanel from './components/AnnotationPanel';
+import GuidedTour from './components/GuidedTour';
 import Loader from './components/Loader';
 import './App.css';
 
 export default function App() {
-  const { scenes, currentScene, loading, error, setCurrentSceneById } =
-    useScenes();
+  // ---- Core scene state ----
+  const {
+    scenes,
+    currentScene,
+    tourSequence,
+    loading,
+    error,
+    currentIndex,
+    setCurrentSceneById,
+  } = useScenes();
+
+  // ---- Feature hooks ----
+  const { trackSceneVisit, trackHotspotClick } = useAnalytics();
+  const { supported: gyroSupported, enabled: gyroEnabled, toggle: toggleGyro, orientationRef } = useGyroscope();
+  const { muted: audioMuted, switchAudio, toggleMute: toggleAudio } = useAudio();
+
+  // ---- UI states ----
+  const [annotation, setAnnotation]           = useState(null);
+  const [guidedTourActive, setGuidedTourActive] = useState(false);
+  const [inspectionMode, setInspectionMode]   = useState(false);
+  const [hoveredHotspot, setHoveredHotspot]   = useState(null);
+
+  // Store scenes globally for preload lookups in PanoViewer
+  useEffect(() => {
+    window.__airPanoScenes = scenes;
+  }, [scenes]);
+
+  // ---- Track scene visits and switch audio on scene change ----
+  const prevSceneId = useRef(null);
+  useEffect(() => {
+    if (currentScene && currentScene.id !== prevSceneId.current) {
+      prevSceneId.current = currentScene.id;
+      trackSceneVisit(currentScene.id);
+      switchAudio(currentScene.audioUrl || null);
+    }
+  }, [currentScene, trackSceneVisit, switchAudio]);
+
+  // ---- Navigation with analytics ----
+  const handleNavigate = useCallback(
+    (sceneId) => {
+      trackHotspotClick(sceneId, currentScene?.id);
+      setCurrentSceneById(sceneId);
+      setAnnotation(null);
+    },
+    [setCurrentSceneById, trackHotspotClick, currentScene]
+  );
+
+  // ---- Annotation panel ----
+  const handleAnnotationOpen = useCallback((ann) => {
+    setAnnotation(ann);
+  }, []);
+
+  const handleAnnotationClose = useCallback(() => {
+    setAnnotation(null);
+  }, []);
+
+  // ---- Feature toggles ----
+  const handleGuidedTourToggle = useCallback(() => {
+    setGuidedTourActive((prev) => !prev);
+    setInspectionMode(false);
+  }, []);
+
+  const handleInspectionToggle = useCallback(() => {
+    setInspectionMode((prev) => !prev);
+    setGuidedTourActive(false);
+  }, []);
+
+  const handleHotspotHover = useCallback((hs) => {
+    setHoveredHotspot(hs);
+  }, []);
 
   // ---- Loading state ----
   if (loading) {
-    return <Loader message="Loading aircraft tour…" />;
+    return <Loader message="Loading aircraft tour..." />;
   }
 
   // ---- Error state ----
@@ -47,21 +122,54 @@ export default function App() {
     );
   }
 
-  // ---- Main view ----
   return (
     <div className="app" id="app-root">
-      {/* Three.js 360° panorama viewer */}
+      {/* ---- Three.js 360° panorama viewer ---- */}
       <PanoViewer
         scene={currentScene}
-        onNavigate={setCurrentSceneById}
+        onNavigate={handleNavigate}
+        onAnnotationOpen={handleAnnotationOpen}
+        gyroEnabled={gyroEnabled}
+        gyroOrientation={orientationRef}
+        inspectionMode={inspectionMode}
+        onHotspotHover={handleHotspotHover}
       />
 
-      {/* HUD overlay: scene info, navigation, fullscreen */}
+      {/* ---- HUD overlay with controls ---- */}
       <Overlay
         currentScene={currentScene}
         scenes={scenes}
-        onSceneChange={setCurrentSceneById}
+        onSceneChange={handleNavigate}
+        gyroSupported={gyroSupported}
+        gyroEnabled={gyroEnabled}
+        onGyroToggle={toggleGyro}
+        audioMuted={audioMuted}
+        onAudioToggle={toggleAudio}
+        inspectionMode={inspectionMode}
+        onInspectionToggle={handleInspectionToggle}
+        guidedTourActive={guidedTourActive}
+        onGuidedTourToggle={handleGuidedTourToggle}
+        hoveredHotspot={hoveredHotspot}
       />
+
+      {/* ---- Annotation detail panel ---- */}
+      {annotation && (
+        <AnnotationPanel
+          annotation={annotation}
+          onClose={handleAnnotationClose}
+        />
+      )}
+
+      {/* ---- Guided tour controls ---- */}
+      {guidedTourActive && tourSequence.length > 0 && (
+        <GuidedTour
+          tourSequence={tourSequence}
+          currentIndex={currentIndex}
+          scenes={scenes}
+          onSceneChange={handleNavigate}
+          onClose={() => setGuidedTourActive(false)}
+        />
+      )}
     </div>
   );
 }

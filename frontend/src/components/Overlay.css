@@ -1,19 +1,18 @@
 /* ==========================================================================
-   Overlay — HUD layer above the panorama viewer
+   Overlay v2 — HUD layer with feature controls
    ========================================================================== */
 
 .overlay {
   position: fixed;
   inset: 0;
   z-index: 100;
-  pointer-events: none;          /* let clicks pass through to canvas */
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   padding: 16px;
 }
 
-/* All interactive children need pointer-events re-enabled */
 .overlay > * {
   pointer-events: auto;
 }
@@ -46,6 +45,13 @@
   line-height: 1.5;
 }
 
+/* ---- Controls toolbar ---- */
+.overlay-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
 .overlay-btn {
   flex-shrink: 0;
   width: 44px;
@@ -54,18 +60,72 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--color-primary);
+  color: var(--color-muted);
   border: 1px solid var(--color-glass-border);
   background: var(--color-glass);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-radius: var(--radius-sm);
-  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+  transition: all var(--transition-fast);
 }
 
 .overlay-btn:hover {
-  background: rgba(0, 212, 255, 0.15);
+  color: var(--color-primary);
+  background: rgba(0, 212, 255, 0.1);
   box-shadow: var(--shadow-glow);
+}
+
+.overlay-btn--active {
+  color: var(--color-bg);
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 14px rgba(0, 212, 255, 0.4);
+}
+
+.overlay-btn--active:hover {
+  background: var(--color-primary) !important;
+  color: var(--color-bg);
+}
+
+/* ---- Hotspot hover tooltip ---- */
+.overlay-hotspot-tooltip {
+  position: absolute;
+  bottom: 80px;
+  left: 16px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: tooltipFadeIn 200ms ease forwards;
+}
+
+.tooltip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tooltip-dot--navigation {
+  background: var(--color-accent);
+  box-shadow: 0 0 6px rgba(255, 184, 0, 0.5);
+}
+
+.tooltip-dot--annotation {
+  background: var(--color-primary);
+  box-shadow: 0 0 6px rgba(0, 212, 255, 0.5);
+}
+
+.tooltip-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+@keyframes tooltipFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ---- Bottom navigation ---- */
@@ -119,19 +179,33 @@
 
   .overlay-info {
     padding: 10px 14px;
-    max-width: 260px;
+    max-width: 220px;
   }
 
   .overlay-title {
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .overlay-desc {
     font-size: 11px;
   }
 
+  .overlay-toolbar {
+    gap: 5px;
+  }
+
+  .overlay-btn {
+    width: 38px;
+    height: 38px;
+  }
+
   .nav-pill {
     padding: 6px 10px;
     font-size: 11px;
+  }
+
+  .overlay-hotspot-tooltip {
+    bottom: 68px;
+    left: 10px;
   }
 }

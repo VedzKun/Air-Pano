@@ -1,24 +1,28 @@
 /**
- * useScenes — Custom Hook for Scene State Management
- * ====================================================
- * Fetches all scenes from the API on mount and manages:
- *   - scenes[]         all loaded scene data
- *   - currentScene     the scene currently being viewed
- *   - loading          whether the initial fetch is in progress
- *   - error            any fetch error message
- *   - setCurrentSceneById(id)   switch to a different scene
+ * useScenes v2 — Enhanced Scene State Management
+ * =================================================
+ * Fetches v2 schema (metadata, tourSequence, scenes) from the API.
+ * Manages:
+ *   - scenes[], currentScene, loading, error
+ *   - tourSequence[] for guided tour
+ *   - sceneHistory[] for back-navigation
+ *   - nextScene / prevScene computed from tour sequence
+ *   - setCurrentSceneById(id) with history tracking
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { fetchScenes } from '../api/scenes';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { fetchAllData } from '../api/scenes';
 
 export default function useScenes() {
-  const [scenes, setScenes]             = useState([]);
-  const [currentScene, setCurrentScene] = useState(null);
-  const [loading, setLoading]           = useState(true);
-  const [error, setError]               = useState(null);
+  const [scenes, setScenes]               = useState([]);
+  const [currentScene, setCurrentScene]   = useState(null);
+  const [tourSequence, setTourSequence]   = useState([]);
+  const [metadata, setMetadata]           = useState({});
+  const [sceneHistory, setSceneHistory]   = useState([]);
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState(null);
 
-  // Fetch all scenes on mount
+  // Fetch all data on mount (v2 schema)
   useEffect(() => {
     let cancelled = false;
 
@@ -26,13 +30,15 @@ export default function useScenes() {
       try {
         setLoading(true);
         setError(null);
-        const data = await fetchScenes();
+        const data = await fetchAllData();
 
         if (!cancelled) {
-          setScenes(data);
-          // Start tour at the first scene (cockpit)
-          if (data.length > 0) {
-            setCurrentScene(data[0]);
+          setScenes(data.scenes || []);
+          setTourSequence(data.tourSequence || []);
+          setMetadata(data.metadata || {});
+
+          if (data.scenes?.length > 0) {
+            setCurrentScene(data.scenes[0]);
           }
         }
       } catch (err) {
@@ -50,26 +56,71 @@ export default function useScenes() {
     }
 
     load();
-
-    // Cleanup: prevent state updates if component unmounts during fetch
     return () => { cancelled = true; };
   }, []);
 
   /**
-   * Navigate to a different scene by its ID.
-   * @param {string} sceneId
+   * Navigate to a scene by ID, pushing current to history.
    */
   const setCurrentSceneById = useCallback(
     (sceneId) => {
       const target = scenes.find((s) => s.id === sceneId);
       if (target) {
+        setSceneHistory((prev) => {
+          if (currentScene) {
+            return [...prev.slice(-19), currentScene.id]; // keep last 20
+          }
+          return prev;
+        });
         setCurrentScene(target);
       } else {
         console.warn(`Scene "${sceneId}" not found`);
       }
     },
-    [scenes]
+    [scenes, currentScene]
   );
 
-  return { scenes, currentScene, loading, error, setCurrentSceneById };
+  /**
+   * Go back to the previous scene in history.
+   */
+  const goBack = useCallback(() => {
+    if (sceneHistory.length === 0) return;
+    const prevId = sceneHistory[sceneHistory.length - 1];
+    const target = scenes.find((s) => s.id === prevId);
+    if (target) {
+      setSceneHistory((prev) => prev.slice(0, -1));
+      setCurrentScene(target);
+    }
+  }, [sceneHistory, scenes]);
+
+  // Compute next/prev based on tour sequence
+  const currentIndex = useMemo(() => {
+    if (!currentScene) return -1;
+    return tourSequence.indexOf(currentScene.id);
+  }, [currentScene, tourSequence]);
+
+  const nextSceneId = useMemo(() => {
+    if (currentIndex < 0 || currentIndex >= tourSequence.length - 1) return null;
+    return tourSequence[currentIndex + 1];
+  }, [currentIndex, tourSequence]);
+
+  const prevSceneId = useMemo(() => {
+    if (currentIndex <= 0) return null;
+    return tourSequence[currentIndex - 1];
+  }, [currentIndex, tourSequence]);
+
+  return {
+    scenes,
+    currentScene,
+    tourSequence,
+    metadata,
+    sceneHistory,
+    loading,
+    error,
+    currentIndex,
+    nextSceneId,
+    prevSceneId,
+    setCurrentSceneById,
+    goBack,
+  };
 }
