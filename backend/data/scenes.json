@@ -1,0 +1,114 @@
+{
+  "scenes": [
+    {
+      "id": "cockpit",
+      "name": "Aircraft Cockpit",
+      "description": "The flight deck featuring advanced avionics and instrumentation panels.",
+      "imageUrl": "/panoramas/cockpit.png",
+      "hotspots": [
+        {
+          "id": "hs-cockpit-1",
+          "pitch": -10,
+          "yaw": 180,
+          "targetSceneId": "first-class",
+          "label": "Enter First Class →"
+        }
+      ]
+    },
+    {
+      "id": "first-class",
+      "name": "First Class Cabin",
+      "description": "Luxurious seating with premium amenities and personal suites.",
+      "imageUrl": "/panoramas/first-class.png",
+      "hotspots": [
+        {
+          "id": "hs-fc-1",
+          "pitch": -5,
+          "yaw": 0,
+          "targetSceneId": "cockpit",
+          "label": "← Back to Cockpit"
+        },
+        {
+          "id": "hs-fc-2",
+          "pitch": -10,
+          "yaw": 180,
+          "targetSceneId": "business-class",
+          "label": "To Business Class →"
+        }
+      ]
+    },
+    {
+      "id": "business-class",
+      "name": "Business Class Cabin",
+      "description": "Spacious lie-flat seats with direct aisle access and ambient lighting.",
+      "imageUrl": "/panoramas/business-class.png",
+      "hotspots": [
+        {
+          "id": "hs-bc-1",
+          "pitch": -5,
+          "yaw": 0,
+          "targetSceneId": "first-class",
+          "label": "← Back to First Class"
+        },
+        {
+          "id": "hs-bc-2",
+          "pitch": -10,
+          "yaw": 180,
+          "targetSceneId": "economy",
+          "label": "To Economy Class →"
+        },
+        {
+          "id": "hs-bc-3",
+          "pitch": -8,
+          "yaw": 90,
+          "targetSceneId": "galley",
+          "label": "To Galley →"
+        }
+      ]
+    },
+    {
+      "id": "economy",
+      "name": "Economy Class Cabin",
+      "description": "Standard seating configuration with overhead bins and entertainment screens.",
+      "imageUrl": "/panoramas/economy.png",
+      "hotspots": [
+        {
+          "id": "hs-ec-1",
+          "pitch": -5,
+          "yaw": 0,
+          "targetSceneId": "business-class",
+          "label": "← Back to Business Class"
+        },
+        {
+          "id": "hs-ec-2",
+          "pitch": -10,
+          "yaw": 270,
+          "targetSceneId": "galley",
+          "label": "To Galley →"
+        }
+      ]
+    },
+    {
+      "id": "galley",
+      "name": "Galley / Service Area",
+      "description": "The onboard kitchen and service preparation area for cabin crew.",
+      "imageUrl": "/panoramas/galley.png",
+      "hotspots": [
+        {
+          "id": "hs-gl-1",
+          "pitch": -5,
+          "yaw": 0,
+          "targetSceneId": "business-class",
+          "label": "← Back to Business Class"
+        },
+        {
+          "id": "hs-gl-2",
+          "pitch": -8,
+          "yaw": 180,
+          "targetSceneId": "economy",
+          "label": "To Economy Class →"
+        }
+      ]
+    }
+  ]
+}

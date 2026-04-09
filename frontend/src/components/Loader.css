@@ -1,0 +1,64 @@
+/* ==========================================================================
+   Loader — Full-screen loading overlay
+   ========================================================================== */
+
+.loader-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg);
+  gap: 24px;
+}
+
+/* Spinner container */
+.loader-spinner {
+  position: relative;
+  width: 72px;
+  height: 72px;
+}
+
+/* Outer rotating ring */
+.loader-ring {
+  position: absolute;
+  inset: 0;
+  border: 3px solid transparent;
+  border-top-color: var(--color-primary);
+  border-right-color: var(--color-primary);
+  border-radius: 50%;
+  animation: loaderSpin 1s linear infinite;
+}
+
+/* Inner pulsing core */
+.loader-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  background: var(--color-primary);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: loaderPulse 1.2s ease-in-out infinite;
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+}
+
+.loader-message {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+@keyframes loaderSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes loaderPulse {
+  0%, 100% { opacity: 0.4; transform: translate(-50%, -50%) scale(0.8); }
+  50%      { opacity: 1;   transform: translate(-50%, -50%) scale(1.2); }
+}

@@ -1,0 +1,55 @@
+/* ==========================================================================
+   PanoViewer — 360° renderer canvas container
+   ========================================================================== */
+
+.pano-viewer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: grab;
+  background: var(--color-bg);
+}
+
+.pano-viewer:active {
+  cursor: grabbing;
+}
+
+/* Smooth fade overlay for scene transitions */
+.pano-transition {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: var(--color-bg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 400ms ease;
+}
+
+.pano-transition--active {
+  opacity: 1;
+}
+
+/* Thin loading bar at top during texture load */
+.pano-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 300;
+  background: rgba(0, 212, 255, 0.1);
+  overflow: hidden;
+}
+
+.pano-loading-bar {
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, var(--color-primary), transparent);
+  animation: panoLoadSlide 1.2s ease-in-out infinite;
+}
+
+@keyframes panoLoadSlide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
